@@ -52,6 +52,26 @@ const getArrivalTime = async (flightCard) => {
   return arrivalTime;
 };
 
+const findLegConnection = (legInfo) => {
+  if (legInfo.toLowerCase().includes("direto")) {
+    return 0;
+  }
+
+  if (legInfo.toLowerCase().includes("conexão")) {
+    return 1;
+  }
+
+  return parseInt(legInfo.toLowerCase().split("conexões")[0]);
+};
+
+const cleanMilesPrice = (milesPrice) => {
+  let numericString = milesPrice.replace(/[^\d.,]/g, "");
+
+  numericString = numericString.replace(/\./g, "");
+
+  return parseInt(numericString, 10);
+};
+
 exports.handler = async (event) => {
   // const handler = async (event) => {
   let result = null;
