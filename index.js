@@ -59,7 +59,7 @@ exports.handler = async (event) => {
   const offers = [];
 
   const url =
-    "https://www.voeazul.com.br/br/pt/home/selecao-voo?c[0].ds=GRU&c[0].std=06/11/2024&c[0].as=FLL&c[1].ds=FLL&c[1].std=06/20/2024&c[1].as=GRU&p[0].t=ADT&p[0].c=1&p[0].cp=false&f.dl=3&f.dr=3&cc=BRL";
+    "https://www.voeazul.com.br/br/pt/home/selecao-voo?c[0].ds=GRU&c[0].std=06/11/2024&c[0].as=FLL&c[1].ds=FLL&c[1].std=06/20/2024&c[1].as=GRU&p[0].t=ADT&p[0].c=1&p[0].cp=false&f.dl=3&f.dr=3&cc=PTS";
 
   try {
     console.log("testing================");
