@@ -198,7 +198,7 @@ exports.handler = async (event) => {
     // Take a screenshot
     // await sendScreenshotError(page, "Teste");
 
-    // console.log("Screenshot taken");
+    console.log("offers: ", offers);
   } catch (error) {
     console.error("Error during the Puppeteer script execution", error);
     throw new Error(error);
