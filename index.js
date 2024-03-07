@@ -77,6 +77,7 @@ exports.handler = async (event) => {
   let result = null;
   let browser = null;
   const offers = [];
+  let page = null;
 
   const url =
     "https://www.voeazul.com.br/br/pt/home/selecao-voo?c[0].ds=GRU&c[0].std=06/11/2024&c[0].as=FLL&c[1].ds=FLL&c[1].std=06/20/2024&c[1].as=GRU&p[0].t=ADT&p[0].c=1&p[0].cp=false&f.dl=3&f.dr=3&cc=PTS";
@@ -106,7 +107,7 @@ exports.handler = async (event) => {
 
     console.log("teste");
 
-    const page = await browser.newPage();
+    page = await browser.newPage();
 
     console.log("nova pagina");
 
