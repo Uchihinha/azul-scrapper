@@ -221,6 +221,10 @@ exports.handler = async (event) => {
     console.log("offers: ", offers);
   } catch (error) {
     console.error("Error during the Puppeteer script execution", error);
+    await sendScreenshotError(
+      page,
+      error.message || "Error during the Puppeteer script execution"
+    );
     throw new Error(error);
   } finally {
     if (browser !== null) {
