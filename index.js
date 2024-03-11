@@ -111,16 +111,16 @@ exports.handler = async (event) => {
 
     console.log("nova pagina");
 
-    // await page.goto("https://www.google.com.br/");
-    await page.goto("https://www.voeazul.com.br/");
+    //   await page.goto("https://www.voeazul.com.br/");
+    await page.goto(url);
 
     await page.waitForSelector("#onetrust-accept-btn-handler");
 
     await page.$("#onetrust-accept-btn-handler").then((el) => el.click());
 
-    await setTimeout(1000);
+    // await setTimeout(1000);
 
-    await page.goto(url);
+    // await page.goto(url);
 
     // const userAgentString = await page.evaluate(() => navigator.userAgent);
     // console.log(`The user agent is: ${userAgentString}`);
