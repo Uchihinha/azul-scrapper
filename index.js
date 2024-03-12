@@ -76,11 +76,17 @@ exports.handler = async (event) => {
   // const handler = async (event) => {
   let result = null;
   let browser = null;
-  const offers = [];
+  let offers = [];
   let page = null;
 
-  const url =
-    "https://www.voeazul.com.br/br/pt/home/selecao-voo?c[0].ds=GRU&c[0].std=06/11/2024&c[0].as=FLL&c[1].ds=FLL&c[1].std=06/20/2024&c[1].as=GRU&p[0].t=ADT&p[0].c=1&p[0].cp=false&f.dl=3&f.dr=3&cc=PTS";
+  const data = JSON.parse(event.body);
+  //   const data = event;
+  console.log("data: ", data);
+
+  const baseUrl = "https://www.voeazul.com.br/br/pt/home/selecao-voo?";
+
+  const url = `${baseUrl}c[0].ds=${data.departure}&c[0].std=${data.startDate}&c[0].as=${data.arrival}&c[1].ds=${data.arrival}&c[1].std=${data.endDate}&c[1].as=${data.departure}&p[0].t=ADT&p[0].c=1&p[0].cp=false&f.dl=3&f.dr=3&cc=PTS`;
+  console.log("url: ", url);
 
   try {
     console.log("testing================");
@@ -146,7 +152,7 @@ exports.handler = async (event) => {
       console.log("não tem mais páginas");
     }
 
-    await page.waitForSelector(".flight-card .card-content");
+    await page.waitForSelector(".trip-index-0 .flight-card .card-content");
 
     try {
       await page.waitForSelector(
@@ -160,7 +166,7 @@ exports.handler = async (event) => {
       await closeErrorModal(page);
     }
 
-    let flightCards = await page.$$(".flight-card");
+    let flightCards = await page.$$(".trip-index-0 .flight-card");
 
     for (let flightCard of flightCards) {
       const legInfo = await getFlightLegInfo(flightCard);
@@ -192,29 +198,33 @@ exports.handler = async (event) => {
       }
     }
 
-    for (const offer of offers) {
+    offers = offers.map((offer) => {
       const departureAirport = offer.departure.slice(0, 3);
       const arrivalAirport = offer.arrival.slice(0, 3);
-      const travelHours = offer.duration.split("\n")[0];
-      const travelMinutes =
-        offer.duration.split("\n")[offer.duration.split("\n").length - 1];
       const numberOfStops = findLegConnection(offer.legInfo);
       const departureTime = offer.departureTime.substr(0, 5);
       const arrivalTime = offer.arrivalTime.substr(0, 5);
 
-      const formatedOffer = {
-        travelTime: {
-          hours: parseInt(travelHours),
-          minutes: parseInt(travelMinutes),
-        },
+      const arrivalDate =
+        offer.arrival.slice(-5).length < 5
+          ? formatAzulDate(data.endDate, arrivalTime)
+          : formatFlightDate(offer.arrival.slice(-5), arrivalTime);
+
+      const departureDate = formatAzulDate(data.startDate, departureTime);
+
+      return {
+        duration: parseDurationToMinutes(offer.duration),
         milesPrice: cleanMilesPrice(offer.milesPrice || 0),
         departureAirport,
         arrivalAirport,
         numberOfStops,
-        arrivalTime,
-        departureTime,
+        arrivalDate,
+        departureDate,
+        source: "azul",
+        cabinClass: "economy",
+        airline: "Azul",
       };
-    }
+    });
 
     // Take a screenshot
     // await sendScreenshotError(page, "Teste");
@@ -276,6 +286,61 @@ const sendScreenshotError = async (page, message) => {
       },
     }
   );
+};
+
+const formatFlightDate = (dateString, timeString) => {
+  // Split the date and time strings
+  const [day, month] = dateString.split("/").map(Number);
+  const [hour, minute] = timeString.split(":").map(Number);
+
+  // Get the current year
+  const year = new Date().getFullYear();
+
+  // Create a new Date object
+  const date = new Date(year, month - 1, day, hour, minute);
+  return date;
+};
+
+const formatAzulDate = (dateString, timeString) => {
+  const [month, day, year] = dateString.split("/").map(Number);
+  const [hour, minute] = timeString.split(":").map(Number);
+  const date = new Date(year, month - 1, day, hour, minute);
+  return date;
+};
+
+const parseDurationToMinutes = (duration) => {
+  // Initialize total minutes
+  let totalMinutes = 0;
+
+  // Regular expressions for days, hours, and minutes
+  const dayRegex = /(\d+)d/;
+  const hourRegex = /(\d+)h/;
+  const minuteRegex = /(\d+)m/;
+
+  // Extract days, hours, and minutes using the regular expressions
+  const daysMatch = duration.match(dayRegex);
+  const hoursMatch = duration.match(hourRegex);
+  const minutesMatch = duration.match(minuteRegex);
+
+  // Convert and add days to total minutes if present
+  if (daysMatch) {
+    const days = Number(daysMatch[1]);
+    totalMinutes += days * 24 * 60;
+  }
+
+  // Convert and add hours to total minutes if present
+  if (hoursMatch) {
+    const hours = Number(hoursMatch[1]);
+    totalMinutes += hours * 60;
+  }
+
+  // Add minutes to total minutes if present
+  if (minutesMatch) {
+    const minutes = Number(minutesMatch[1]);
+    totalMinutes += minutes;
+  }
+
+  return totalMinutes;
 };
 
 // handler();
