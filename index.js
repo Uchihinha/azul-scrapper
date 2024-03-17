@@ -79,8 +79,8 @@ exports.handler = async (event) => {
   let offers = [];
   let page = null;
 
-  const data = JSON.parse(event.body);
-  //   const data = event;
+  // const data = JSON.parse(event.body);
+  const data = event;
   console.log("data: ", data);
 
   const baseUrl = "https://www.voeazul.com.br/br/pt/home/selecao-voo?";
@@ -115,6 +115,12 @@ exports.handler = async (event) => {
 
     page = await browser.newPage();
 
+    await page.setRequestInterception(true);
+
+    page.on("request", (request) => {
+      request.continue();
+    });
+
     console.log("nova pagina");
 
     // await page.goto("https://www.google.com.br/");
@@ -126,10 +132,16 @@ exports.handler = async (event) => {
 
     await setTimeout(1000);
 
-    await page.goto(url);
+    const offers = await performRequestWithRetry(page, url);
 
-    // const userAgentString = await page.evaluate(() => navigator.userAgent);
-    // console.log(`The user agent is: ${userAgentString}`);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        data: "offers",
+      }),
+    };
+
+    // await page.goto(url);
 
     let isLoaded = false;
 
@@ -138,6 +150,13 @@ exports.handler = async (event) => {
         await page.waitForSelector("section.card-list", { timeout: 5000 });
         isLoaded = true;
       } catch (error) {
+        console.log("deu um talento");
+        const noResults = await page.$(".no-results-childs");
+        if (noResults) {
+          console.log("No results found");
+          return [];
+        }
+
         await page.goto("https://www.voeazul.com.br/");
         await setTimeout(1000);
         await page.goto(url);
@@ -252,6 +271,65 @@ exports.handler = async (event) => {
   };
 };
 
+const performRequestWithRetry = async (page, requestUrl, tryCount = 0) => {
+  const maxRetries = 3; // Maximum number of retries
+  // Flag to indicate whether the request was successful or not
+  let requestSuccessful = false;
+
+  page.on("response", async (response) => {
+    const requestUrl =
+      "https://b2c-api.voeazul.com.br/tudoAzulReservationAvailability/api/tudoazul/reservation/availability/v5/availability"; // Specify the request URL you're interested in
+
+    if (response.url() === requestUrl && response.status() === 200) {
+      try {
+        const { data } = await response.json(); // Assuming the response is JSON. Use .text() for plain text.
+
+        const departureMain = data.trips[0];
+
+        const departures = departureMain.journeys.map((offer) => {
+          return {
+            duration: parseDurationToMinutes(offer.identifier.duration),
+            milesPrice:
+              offer.fares[0].paxPoints[0].levels[0].points.discountedAmount,
+            departureAirport: departureMain.departureStation,
+            arrivalAirport: departureMain.arrivalStation,
+            numberOfStops: offer.identifier.connections.count,
+            arrivalDate:
+              offer.segments[offer.segments.length - 1].identifier.sta,
+            departureDate: offer.segments[0].identifier.std,
+            source: "azul",
+            cabinClass: "economy",
+            airline: "Azul",
+          };
+        });
+        requestSuccessful = true;
+        console.log("Captured response for:", requestUrl, responseData);
+      } catch (error) {
+        console.error("Error capturing response data:", error);
+      }
+    }
+  });
+
+  // Navigate to the URL or perform the action that triggers the request
+  await page.goto(requestUrl, { waitUntil: "networkidle2" });
+
+  if (!requestSuccessful) {
+    if (tryCount >= maxRetries) {
+      await sendScreenshotError(
+        page,
+        "Failed to capture response after maximum retries"
+      );
+      throw new Error(error);
+    }
+
+    console.log(`Request failed, retrying... Attempt ${tryCount + 1}`);
+    await page.goto("https://www.voeazul.com.br/");
+    await setTimeout(1000);
+
+    await performRequestWithRetry(page, requestUrl, tryCount + 1);
+  }
+};
+
 const closeErrorModal = async (page) => {
   const parentElement = await page.waitForSelector("#FAILED_COMMUNICATION");
   const childElement = await parentElement.$(
@@ -309,38 +387,9 @@ const formatAzulDate = (dateString, timeString) => {
 };
 
 const parseDurationToMinutes = (duration) => {
-  // Initialize total minutes
-  let totalMinutes = 0;
-
-  // Regular expressions for days, hours, and minutes
-  const dayRegex = /(\d+)d/;
-  const hourRegex = /(\d+)h/;
-  const minuteRegex = /(\d+)m/;
-
-  // Extract days, hours, and minutes using the regular expressions
-  const daysMatch = duration.match(dayRegex);
-  const hoursMatch = duration.match(hourRegex);
-  const minutesMatch = duration.match(minuteRegex);
-
-  // Convert and add days to total minutes if present
-  if (daysMatch) {
-    const days = Number(daysMatch[1]);
-    totalMinutes += days * 24 * 60;
-  }
-
-  // Convert and add hours to total minutes if present
-  if (hoursMatch) {
-    const hours = Number(hoursMatch[1]);
-    totalMinutes += hours * 60;
-  }
-
-  // Add minutes to total minutes if present
-  if (minutesMatch) {
-    const minutes = Number(minutesMatch[1]);
-    totalMinutes += minutes;
-  }
-
-  return totalMinutes;
+  const dayToMinute = duration.days * 24 * 60;
+  const hourToMinute = duration.hours * 60;
+  return dayToMinute + hourToMinute + duration.minutes;
 };
 
 // handler();
