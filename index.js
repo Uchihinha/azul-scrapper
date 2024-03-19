@@ -6,16 +6,81 @@ const FormData = require("form-data");
 const { default: axios } = require("axios");
 const fs = require("fs");
 
+// const puppeteer = require("puppeteer-core");
+// const chromium = require("@sparticuz/chromium");
+
 puppeteer.use(pluginStealth());
+
+// chromium.setHeadlessMode = true;
+// chromium.setHeadlessMode = "new";
+
+const getFlightLegInfo = async (fareCard) => {
+  const flightLegInfo = await fareCard.$eval(
+    ".flight-leg-info button span:last-of-type",
+    (el) => el.textContent.trim()
+  );
+
+  return flightLegInfo;
+};
+
+const getTimeInfo = async (flightCard) => {
+  const flightDuration = await flightCard
+    .$$(".flight-card__info .info div:last-child")
+    .then((items) => items[1]);
+
+  const buttonText = await flightDuration.$eval("button strong", (el) =>
+    el.textContent.trim()
+  );
+  return buttonText;
+};
+
+const getDepartureTime = async (flightCard) => {
+  const departureTime = await flightCard.$eval(
+    ".flight-card__info .info .departure",
+    (el) => el.textContent.trim()
+  );
+
+  return departureTime;
+};
+
+const getArrivalTime = async (flightCard) => {
+  const arrivalTime = await flightCard.$eval(
+    ".flight-card__info .info .arrival",
+    (el) => el.textContent.trim()
+  );
+
+  return arrivalTime;
+};
+
+const findLegConnection = (legInfo) => {
+  if (legInfo.toLowerCase().includes("direto")) {
+    return 0;
+  }
+
+  if (legInfo.toLowerCase().includes("conexão")) {
+    return 1;
+  }
+
+  return parseInt(legInfo.toLowerCase().split("conexões")[0]);
+};
+
+const cleanMilesPrice = (milesPrice) => {
+  let numericString = milesPrice.replace(/[^\d.,]/g, "");
+
+  numericString = numericString.replace(/\./g, "");
+
+  return parseInt(numericString, 10);
+};
 
 exports.handler = async (event) => {
   // const handler = async (event) => {
-  let result = [];
+  let result = null;
   let browser = null;
+  let offers = [];
   let page = null;
 
-  const data = JSON.parse(event.body);
-  // const data = event;
+  // const data = JSON.parse(event.body);
+  const data = event;
   console.log("data: ", data);
 
   const baseUrl = "https://www.voeazul.com.br/br/pt/home/selecao-voo?";
@@ -67,14 +132,123 @@ exports.handler = async (event) => {
 
     await setTimeout(1000);
 
-    result = await performRequestWithRetry(page, url);
+    const offers = await performRequestWithRetry(page, url);
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        data: result,
+        data: "offers",
       }),
     };
+
+    // await page.goto(url);
+
+    let isLoaded = false;
+
+    while (!isLoaded) {
+      try {
+        await page.waitForSelector("section.card-list", { timeout: 5000 });
+        isLoaded = true;
+      } catch (error) {
+        console.log("deu um talento");
+        const noResults = await page.$(".no-results-childs");
+        if (noResults) {
+          console.log("No results found");
+          return [];
+        }
+
+        await page.goto("https://www.voeazul.com.br/");
+        await setTimeout(1000);
+        await page.goto(url);
+        console.error("Error on waitForSelector");
+      }
+    }
+
+    try {
+      await page.waitForSelector("#load-more-button");
+      await page.$eval("#load-more-button", (el) => el.click());
+    } catch (error) {
+      console.log("não tem mais páginas");
+    }
+
+    await page.waitForSelector(".trip-index-0 .flight-card .card-content");
+
+    try {
+      await page.waitForSelector(
+        "[data-test-id='fare-price fare-price-with-points']"
+      );
+    } catch (error) {
+      await sendScreenshotError(
+        page,
+        "Error on [data-test-id='fare-price fare-price-with-points']"
+      );
+      await closeErrorModal(page);
+    }
+
+    let flightCards = await page.$$(".trip-index-0 .flight-card");
+
+    for (let flightCard of flightCards) {
+      const legInfo = await getFlightLegInfo(flightCard);
+      const duration = await getTimeInfo(flightCard);
+      const departure = await flightCard.$eval(".iata-day:not(.arrival)", (e) =>
+        e.textContent.trim()
+      );
+      const arrival = await flightCard.$eval(".iata-day.arrival", (e) =>
+        e.textContent.trim()
+      );
+      const fareItem = await flightCard.$(".fare-container.right");
+      const farePrice = await fareItem.$(
+        ".fare .current[data-test-id='fare-price fare-price-with-points']"
+      );
+      const departureTime = await getDepartureTime(flightCard);
+      const arrivalTime = await getArrivalTime(flightCard);
+
+      if (farePrice) {
+        let milesPrice = await farePrice.evaluate((x) => x.textContent);
+        offers.push({
+          legInfo,
+          departure,
+          arrival,
+          milesPrice,
+          duration,
+          departureTime,
+          arrivalTime,
+        });
+      }
+    }
+
+    offers = offers.map((offer) => {
+      const departureAirport = offer.departure.slice(0, 3);
+      const arrivalAirport = offer.arrival.slice(0, 3);
+      const numberOfStops = findLegConnection(offer.legInfo);
+      const departureTime = offer.departureTime.substr(0, 5);
+      const arrivalTime = offer.arrivalTime.substr(0, 5);
+
+      const arrivalDate =
+        offer.arrival.slice(-5).length < 5
+          ? formatAzulDate(data.endDate, arrivalTime)
+          : formatFlightDate(offer.arrival.slice(-5), arrivalTime);
+
+      const departureDate = formatAzulDate(data.startDate, departureTime);
+
+      return {
+        duration: parseDurationToMinutes(offer.duration),
+        milesPrice: cleanMilesPrice(offer.milesPrice || 0),
+        departureAirport,
+        arrivalAirport,
+        numberOfStops,
+        arrivalDate,
+        departureDate,
+        source: "azul",
+        cabinClass: "economy",
+        airline: "Azul",
+      };
+    });
+
+    // Take a screenshot
+    // await sendScreenshotError(page, "Teste");
+
+    console.log("offers: ", offers);
   } catch (error) {
     console.error("Error during the Puppeteer script execution", error);
     await sendScreenshotError(
@@ -88,13 +262,19 @@ exports.handler = async (event) => {
       await closeBrowser(browser);
     }
   }
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      data: offers,
+    }),
+  };
 };
 
 const performRequestWithRetry = async (page, requestUrl, tryCount = 0) => {
   const maxRetries = 3; // Maximum number of retries
   // Flag to indicate whether the request was successful or not
   let requestSuccessful = false;
-  let result = [];
 
   page.on("response", async (response) => {
     const requestUrl =
@@ -104,14 +284,27 @@ const performRequestWithRetry = async (page, requestUrl, tryCount = 0) => {
       try {
         const { data } = await response.json(); // Assuming the response is JSON. Use .text() for plain text.
 
-        const departures = formatTrips(data.trips[0]);
-        const arrivals = formatTrips(data.trips[1]);
+        const departureMain = data.trips[0];
 
-        result = [...departures, ...arrivals];
+        const departures = departureMain.journeys.map((offer) => {
+          return {
+            duration: parseDurationToMinutes(offer.identifier.duration),
+            milesPrice:
+              offer.fares[0].paxPoints[0].levels[0].points.discountedAmount,
+            departureAirport: departureMain.departureStation,
+            arrivalAirport: departureMain.arrivalStation,
+            numberOfStops: offer.identifier.connections.count,
+            arrivalDate:
+              offer.segments[offer.segments.length - 1].identifier.sta,
+            departureDate: offer.segments[0].identifier.std,
+            source: "azul",
+            cabinClass: "economy",
+            airline: "Azul",
+          };
+        });
         requestSuccessful = true;
-        console.log("Captured response for:", requestUrl, result);
+        console.log("Captured response for:", requestUrl, responseData);
       } catch (error) {
-        console.error(error);
         console.error("Error capturing response data:", error);
       }
     }
@@ -122,19 +315,27 @@ const performRequestWithRetry = async (page, requestUrl, tryCount = 0) => {
 
   if (!requestSuccessful) {
     if (tryCount >= maxRetries) {
-      throw new Error("Failed to capture response after maximum retries");
+      await sendScreenshotError(
+        page,
+        "Failed to capture response after maximum retries"
+      );
+      throw new Error(error);
     }
 
-    tryCount++;
-
-    console.log(`Request failed, retrying... Attempt ${tryCount}`);
+    console.log(`Request failed, retrying... Attempt ${tryCount + 1}`);
     await page.goto("https://www.voeazul.com.br/");
     await setTimeout(1000);
 
-    await performRequestWithRetry(page, requestUrl, tryCount);
+    await performRequestWithRetry(page, requestUrl, tryCount + 1);
   }
+};
 
-  return result;
+const closeErrorModal = async (page) => {
+  const parentElement = await page.waitForSelector("#FAILED_COMMUNICATION");
+  const childElement = await parentElement.$(
+    "[data-testid='search-box-hotel-date-picker-primary-button']"
+  );
+  await childElement.click();
 };
 
 const closeBrowser = async (browser) => {
@@ -165,69 +366,30 @@ const sendScreenshotError = async (page, message) => {
   );
 };
 
+const formatFlightDate = (dateString, timeString) => {
+  // Split the date and time strings
+  const [day, month] = dateString.split("/").map(Number);
+  const [hour, minute] = timeString.split(":").map(Number);
+
+  // Get the current year
+  const year = new Date().getFullYear();
+
+  // Create a new Date object
+  const date = new Date(year, month - 1, day, hour, minute);
+  return date;
+};
+
+const formatAzulDate = (dateString, timeString) => {
+  const [month, day, year] = dateString.split("/").map(Number);
+  const [hour, minute] = timeString.split(":").map(Number);
+  const date = new Date(year, month - 1, day, hour, minute);
+  return date;
+};
+
 const parseDurationToMinutes = (duration) => {
   const dayToMinute = duration.days * 24 * 60;
   const hourToMinute = duration.hours * 60;
   return dayToMinute + hourToMinute + duration.minutes;
-};
-
-const formatTrips = (roughTrip) => {
-  const main = roughTrip;
-
-  const flights = [];
-
-  for (let offer of main.journeys) {
-    if (offer.fares.length === 0) continue;
-
-    const baseInfo = {
-      duration: parseDurationToMinutes(offer.identifier.duration),
-      departureAirport: main.departureStation,
-      arrivalAirport: main.arrivalStation,
-      numberOfStops: offer.identifier.connections?.count ?? 0,
-      arrivalDate: offer.segments[offer.segments.length - 1].identifier.sta,
-      departureDate: offer.segments[0].identifier.std,
-      source: "azul",
-      airline: "Azul",
-    };
-
-    if (offer.fares.length === 1) {
-      const fare = offer.fares[0];
-
-      flights.push({
-        ...baseInfo,
-        milesPrice: fare.paxPoints[0].levels[0].points.discountedAmount,
-        cabinClass: fare.productClass.category.toLowerCase(),
-      });
-
-      return flights;
-    }
-
-    const economyFare = offer.fares.find(
-      (fare) => fare.productClass.name === "Economy"
-    );
-
-    const businessFare = offer.fares.find(
-      (fare) => fare.productClass.name === "Business"
-    );
-
-    if (economyFare) {
-      flights.push({
-        ...baseInfo,
-        milesPrice: economyFare.paxPoints[0].levels[0].points.discountedAmount,
-        cabinClass: "economy",
-      });
-    }
-
-    if (businessFare) {
-      flights.push({
-        ...baseInfo,
-        milesPrice: businessFare.paxPoints[0].levels[0].points.discountedAmount,
-        cabinClass: "business",
-      });
-    }
-  }
-
-  return flights;
 };
 
 // handler();
