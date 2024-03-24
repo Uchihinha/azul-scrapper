@@ -1,24 +1,30 @@
 {
-  "name": "azul-scrapper",
-  "version": "1.0.0",
-  "description": "Script to scrap Azul Linhas Aéreas website",
-  "main": "index.js",
-  "scripts": {
-    "docker:up": "docker ps -a | grep -q azul-scrapper && docker rm azul-scrapper || true && docker image build -t azul-scrapper . && docker run -i --name azul-scrapper -p 9000:8080 azul-scrapper",
-    "docker:build": "docker image build -t azul-scrapper .",
-    "dev": "./test.sh",
-    "ecr:deploy": "docker build -t azul-scrapper . && docker tag azul-scrapper:latest 054309897869.dkr.ecr.us-east-1.amazonaws.com/azul-scrapper:latest && docker push 054309897869.dkr.ecr.us-east-1.amazonaws.com/azul-scrapper:latest && aws lambda update-function-code --function-name azul-test --image-uri 054309897869.dkr.ecr.us-east-1.amazonaws.com/azul-scrapper:latest --region us-east-1"
-  },
-  "keywords": [],
-  "author": "Gabriel Jorge",
-  "license": "ISC",
-  "dependencies": {
-    "axios": "^1.6.7",
-    "form-data": "^4.0.0",
-    "fs": "^0.0.1-security",
-    "path": "^0.12.7",
-    "puppeteer": "^22.2.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
-  }
+    "name": "azul-scrapper",
+    "version": "1.0.0",
+    "description": "Script to scrap Azul Linhas Aéreas website",
+    "main": "index.js",
+    "scripts": {
+        "docker:up": "./docker-up.sh",
+        "docker:up2": "docker ps -a | grep -q azul-scrapper && docker rm azul-scrapper || true && docker image build -t azul-scrapper . && docker run -i --name azul-scrapper -p 9000:8080 azul-scrapper",
+        "docker:build": "docker image build -t azul-scrapper .",
+        "dev": "./test.sh",
+        "ecr:deploy": "docker build -t azul-scrapper . && docker tag azul-scrapper:latest 054309897869.dkr.ecr.us-east-1.amazonaws.com/azul-scrapper:latest && docker push 054309897869.dkr.ecr.us-east-1.amazonaws.com/azul-scrapper:latest && aws lambda update-function-code --function-name azul-test --image-uri 054309897869.dkr.ecr.us-east-1.amazonaws.com/azul-scrapper:latest --region us-east-1",
+        "ecr:deploy2": "docker build -t teste . && docker tag teste:latest 054309897869.dkr.ecr.sa-east-1.amazonaws.com/teste:latest && docker push 054309897869.dkr.ecr.sa-east-1.amazonaws.com/teste:latest && aws lambda update-function-code --function-name teste --image-uri 054309897869.dkr.ecr.sa-east-1.amazonaws.com/teste:latest --region sa-east-1"
+    },
+    "keywords": [],
+    "author": "Gabriel Jorge",
+    "license": "ISC",
+    "dependencies": {
+        "axios": "^1.6.7",
+        "child_process": "^1.0.2",
+        "form-data": "^4.0.0",
+        "fs": "^0.0.1-security",
+        "install": "^0.13.0",
+        "npm": "^10.5.0",
+        "path": "^0.12.7",
+        "puppeteer": "^22.2",
+        "puppeteer-core": "22.2",
+        "puppeteer-extra": "^3.3.6",
+        "puppeteer-extra-plugin-stealth": "^2.11.2"
+    }
 }

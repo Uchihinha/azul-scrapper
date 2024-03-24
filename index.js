@@ -5,6 +5,7 @@ const { setTimeout } = require("node:timers/promises");
 const FormData = require("form-data");
 const { default: axios } = require("axios");
 const fs = require("fs");
+const { execSync } = require("child_process");
 
 // const puppeteer = require("puppeteer-core");
 // const chromium = require("@sparticuz/chromium");
@@ -89,25 +90,30 @@ exports.handler = async (event) => {
   console.log("url: ", url);
 
   try {
+    // const chromeVersion = execSync('google-chrome --version').toString();
+    // console.log("Chrome version:", chromeVersion);
     console.log("testing================");
     // console.log("executablePath(): ", executablePath());
     // Launch the Chromium browser with necessary arguments for AWS Lambda environment
     browser = await puppeteer.launch({
       headless: true,
-      //   executablePath: executablePath(),
-      executablePath: "./linux-122.0.6261.57/chrome-linux64/chrome",
+      executablePath: "/usr/bin/google-chrome-stable",
+      // executablePath: executablePath(),
+      // executablePath: "./linux-122.0.6261.57/chrome-linux64/chrome",
       // "/root/.cache/puppeteer/chrome/linux-122.0.6261.57/chrome-linux64/chrome",
       //   executablePath: await chromium.executablePath(),
       //   executablePath: "./chrome/linux-122.0.6261.57/chrome-linux64/chrome",
-      waitUntil: "networkidle0",
+      // waitUntil: "networkidle0",
       args: [
         "--window-size=1920,1080",
         "--no-sandbox",
         "--disable-web-security",
         "--disable-setuid-sandbox",
+        "--disable-gpu",
         // "--enable-gpu",
         "--disable-dev-shm-usage", // Added to improve compatibility
         "--single-process", // Might improve stability in Lambda's environment
+        "--user-data-dir=/tmp/chrome-user-data",
       ],
     });
 
@@ -124,13 +130,22 @@ exports.handler = async (event) => {
     console.log("nova pagina");
 
     // await page.goto("https://www.google.com.br/");
-    await page.goto("https://www.voeazul.com.br/");
+    await page.goto("https://www.voeazul.com.br/", {
+      waitUntil: "networkidle2",
+    });
+    // await page.goto(url);
 
     await page.waitForSelector("#onetrust-accept-btn-handler");
 
     await page.$("#onetrust-accept-btn-handler").then((el) => el.click());
 
-    await setTimeout(1000);
+    await setTimeout(2000);
+
+    console.log("deu bom aqui");
+
+    await page.goto(url, {
+      waitUntil: "networkidle2",
+    });
 
     const offers = await performRequestWithRetry(page, url);
 
@@ -147,7 +162,7 @@ exports.handler = async (event) => {
 
     while (!isLoaded) {
       try {
-        await page.waitForSelector("section.card-list", { timeout: 5000 });
+        await page.waitForSelector("section.card-list", { timeout: 1000 });
         isLoaded = true;
       } catch (error) {
         console.log("deu um talento");

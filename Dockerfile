@@ -1,41 +1,22 @@
-# Define the base image from AWS Lambda Node.js 18.x runtime
 FROM public.ecr.aws/lambda/nodejs:18
 
-# Install system dependencies required for Puppeteer and Chromium
-RUN yum -y update && yum -y install \
-    alsa-lib \
-    atk \
-    cups-libs \
-    gtk3 \
-    ipa-gothic-fonts \
-    libXcomposite \
-    libXcursor \
-    libXdamage \
-    libXext \
-    libXi \
-    libXrandr \
-    libXScrnSaver \
-    libXtst \
-    pango \
-    xorg-x11-fonts-100dpi \
-    xorg-x11-fonts-75dpi \
-    xorg-x11-fonts-cyrillic \
-    xorg-x11-fonts-misc \
-    xorg-x11-fonts-Type1 \
-    xorg-x11-utils \
-    nss \
-    -y && yum clean all
+# Install Xvfb
+RUN yum update -y && \
+    yum install -y bzip2 gtk3 dbus-glib libXt xorg-x11-server-Xvfb ImageMagick xz procps xorg-x11-utils
 
-# Copy the package.json and package-lock.json (if available)
+# Install latest Google Chrome browser
+RUN curl -o chrome.rpm https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm
+RUN yum install -y chrome.rpm
+
+WORKDIR ${LAMBDA_TASK_ROOT}
+
 COPY package*.json ${LAMBDA_TASK_ROOT}/
+RUN npm install
+COPY teste.js ${LAMBDA_TASK_ROOT}/
 
-# Install NPM dependencies, including Puppeteer
-RUN npm install && npm cache clean --force
+# Required for Xvfb
+ENV DISPLAY=":99.0"
 
-# Copy the rest of the application
-COPY . ${LAMBDA_TASK_ROOT}/
+RUN mkdir -p /var/run/dbus && dbus-daemon --config-file=/usr/share/dbus-1/system.conf --print-address
 
-RUN npx puppeteer browsers install chrome
-
-# Set the CMD to your handler (this should match the handler method in your Node.js application)
-CMD ["index.handler"]
+CMD ["teste.handler"]
